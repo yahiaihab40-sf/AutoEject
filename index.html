@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en" data-build="9b5ccd2fa7">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="SolidForms Auto-Eject online: batch and auto-ejection G-code for the Elegoo Centauri Carbon and Bambu Lab P1S. Runs in your browser; files are never uploaded.">
+<title>SolidForms Auto-Eject</title>
+<style>
+@font-face { font-family: "Vip"; src: url("fonts/vipnagorgialla-rg.otf"); font-weight: 400; }
+@font-face { font-family: "Vip"; src: url("fonts/vipnagorgialla-bd.otf"); font-weight: 700; }
+
+:root {
+  --ink: #050506;
+  --bg: #08090b;
+  --panel: #0d0e11;
+  --panel-2: #121318;
+  --line: rgba(255,255,255,.07);
+  --line-2: rgba(255,255,255,.13);
+  --text: #ECEAE6;
+  --dim: #9A9AA5;
+  --faint: #5d5e68;
+  --orange: #E4521B;
+  --hot: #FF7A1A;
+  --paper: #F4F2EF;
+  --ok: #46d68c;
+  --warn: #f2b440;
+  --err: #ff5a4e;
+  --mono: "Cascadia Mono", "Consolas", monospace;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--ink); color: var(--text); font: 13px/1.45 var(--ui); overflow: hidden; }
+body { display: grid; grid-template-rows: 58px 1fr 30px; }
+::selection { background: var(--orange); color: #fff; }
+button, input { font: inherit; color: inherit; }
+
+/* ---------- header ---------- */
+header {
+  display: flex; align-items: center; gap: 18px; padding: 0 22px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #0b0c0f, var(--ink));
+}
+.wordmark { font: 700 21px "Vip"; letter-spacing: .01em; }
+.wordmark b { color: var(--orange); font-weight: 700; }
+.sep { width: 1px; height: 22px; background: var(--line-2); }
+.product { font: 400 11px "Vip"; letter-spacing: .32em; text-transform: uppercase; color: var(--dim); }
+.ver { font: 11px var(--mono); color: var(--faint); border: 1px solid var(--line-2); padding: 1px 7px; border-radius: 3px; }
+header .spacer { flex: 1; }
+.machine { display: flex; align-items: center; gap: 9px; font: 10.5px var(--mono); color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); box-shadow: 0 0 0 3px rgba(255,255,255,.04); }
+.dot.live { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+.dot.bad { background: var(--err); box-shadow: 0 0 10px var(--err); }
+
+/* ---------- layout ---------- */
+main { display: grid; grid-template-columns: 340px 1fr 372px; min-height: 0; }
+.col { min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 11px; }
+.col.left .card { padding: 12px 13px 13px; }
+.col.left .label { margin-bottom: 10px; }
+.col::-webkit-scrollbar { width: 6px; } .col::-webkit-scrollbar-thumb { background: #22232a; border-radius: 3px; }
+.col.left { border-right: 1px solid var(--line); }
+.col.right { border-left: 1px solid var(--line); }
+.col.center { padding: 16px 18px; }
+
+/* ---------- HUD card ---------- */
+.card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 14px 14px 15px; }
+.card::before, .card::after { content: ""; position: absolute; width: 9px; height: 9px; border-color: var(--line-2); border-style: solid; pointer-events: none; }
+.card::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
+.card::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+.card.live::before, .card.live::after { border-color: var(--orange); }
+.label { display: flex; align-items: baseline; gap: 9px; font: 400 10.5px "Vip"; letter-spacing: .26em; text-transform: uppercase; color: var(--dim); margin-bottom: 12px; }
+.label .n { color: var(--orange); font-family: var(--mono); letter-spacing: 0; font-size: 10.5px; }
+.label .aside { margin-left: auto; font: 10.5px var(--mono); letter-spacing: .04em; text-transform: none; color: var(--faint); }
+.hint { color: var(--faint); font-size: 11.5px; margin-top: 9px; line-height: 1.5; }
+.hint b { color: var(--dim); font-weight: 600; }
+
+/* ---------- source ---------- */
+.drop {
+  display: flex; align-items: center; gap: 12px; padding: 13px; cursor: pointer;
+  border: 1px dashed var(--line-2); border-radius: 4px; background: var(--panel-2); transition: .15s;
+}
+.drop:hover, body.dragging .drop { border-color: var(--orange); background: rgba(228,82,27,.06); }
+.drop svg { flex: none; }
+.drop .t1 { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
+.drop .t2 { font-size: 11.5px; color: var(--faint); }
+.readouts { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 1px; margin-top: 12px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.ro { background: var(--panel); padding: 8px 10px; }
+.ro .k { font: 9.5px "Vip"; letter-spacing: .22em; text-transform: uppercase; color: var(--faint); }
+.ro .v { font: 13px var(--mono); margin-top: 2px; white-space: nowrap; }
+.ro { padding: 7px 9px; }
+.ro .v small { color: var(--dim); font-size: 11px; }
+
+/* ---------- controls ---------- */
+.qty { display: flex; align-items: center; gap: 10px; }
+.qty button { width: 38px; height: 38px; border-radius: 4px; border: 1px solid var(--line-2); background: var(--panel-2); font-size: 18px; cursor: pointer; transition: .12s; }
+.qty button:hover { border-color: var(--orange); color: var(--hot); }
+.qty input { width: 86px; height: 46px; text-align: center; font: 700 30px var(--mono); background: transparent; border: 0; border-bottom: 1px solid var(--line-2); outline: none; }
+.qty input:focus { border-bottom-color: var(--orange); }
+.qty .unit { font: 10.5px "Vip"; letter-spacing: .24em; color: var(--dim); }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 4px; padding: 3px; gap: 3px; }
+.seg button { border: 0; background: transparent; padding: 8px 6px; border-radius: 3px; cursor: pointer; font: 400 10px "Vip"; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); transition: .12s; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: var(--orange); color: #fff; box-shadow: 0 2px 14px rgba(228,82,27,.35); }
+
+.slider { margin-top: 14px; display: grid; grid-template-columns: 1fr 76px; gap: 12px; align-items: center; }
+.slider .val { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; }
+.slider .val input { width: 46px; text-align: right; font: 600 20px var(--mono); background: transparent; border: 0; border-bottom: 1px solid var(--line-2); outline: none; }
+.slider .val input:focus { border-bottom-color: var(--orange); }
+.slider .val span { color: var(--dim); font: 12px var(--mono); }
+input[type=range] { -webkit-appearance: none; width: 100%; height: 22px; background: transparent; }
+input[type=range]::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(90deg, var(--orange) var(--p, 50%), var(--line-2) var(--p, 50%)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -6px; border-radius: 50%; background: var(--ink); border: 2px solid var(--orange); box-shadow: 0 0 0 4px rgba(228,82,27,.15); cursor: pointer; }
+
+.heights { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hz { border: 1px solid var(--line); border-radius: 3px; padding: 9px 10px; background: var(--panel-2); }
+.hz .k { font: 9.5px "Vip"; letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
+.hz .v { font: 600 19px var(--mono); margin-top: 3px; }
+.hz .v small { font-size: 11px; color: var(--dim); font-weight: 400; }
+.hz .r { font: 10.5px var(--mono); color: var(--hot); margin-top: 1px; }
+.hz.off { opacity: .35; }
+
+.toggle { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; cursor: pointer; user-select: none; }
+.toggle .tl { font-size: 12.5px; }
+.sw { width: 34px; height: 18px; border-radius: 9px; background: #23242b; position: relative; transition: .15s; flex: none; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--dim); transition: .15s; }
+.toggle.on .sw { background: var(--orange); }
+.toggle.on .sw::after { left: 19px; background: #fff; }
+
+details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+summary { cursor: pointer; font: 9.5px "Vip"; letter-spacing: .22em; text-transform: uppercase; color: var(--faint); list-style: none; }
+summary::before { content: "+ "; color: var(--orange); font-family: var(--mono); }
+details[open] summary::before { content: "− "; }
+.adv { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--dim); }
+.adv input { width: 64px; padding: 4px 6px; text-align: right; font: 13px var(--mono); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; outline: none; }
+.adv input:focus { border-color: var(--orange); }
+
+/* ---------- bed view ---------- */
+.stage { position: relative; height: 100%; min-height: 560px; display: flex; flex-direction: column; background: radial-gradient(ellipse at 50% 40%, #101116 0%, var(--ink) 70%); border: 1px solid var(--line); border-radius: 4px; }
+.stage .bar { display: flex; align-items: center; gap: 18px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.stage .bar .label { margin: 0; }
+.legend { display: flex; gap: 16px; margin-left: auto; font: 10.5px var(--mono); color: var(--dim); }
+.legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; }
+.stage .view { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 10px; }
+#bed { width: 100%; height: 100%; max-height: 100%; }
+#bed text { font-family: var(--mono); }
+.empty { position: absolute; inset: 48px 0 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; cursor: pointer; }
+.empty .big { font: 700 22px "Vip"; letter-spacing: .06em; }
+.empty .small { color: var(--faint); max-width: 420px; }
+.empty .frame { width: 150px; height: 150px; position: relative; display: grid; place-items: center; }
+.empty .frame::before, .empty .frame::after { content: ""; position: absolute; width: 26px; height: 26px; border: 2px solid var(--orange); }
+.empty .frame::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+.empty .frame::after { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+.scan { position: absolute; left: 12px; right: 12px; height: 1px; background: linear-gradient(90deg, transparent, var(--hot), transparent); animation: scan 2.6s ease-in-out infinite; }
+@keyframes scan { 0%, 100% { top: 14px; opacity: .2; } 50% { top: 134px; opacity: 1; } }
+.flow { stroke-dasharray: 5 4; animation: flow 1.1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -9; } }
+.fade { animation: fade .35s ease-out both; }
+@keyframes fade { from { opacity: 0; transform: translateY(3px); } }
+
+/* ---------- right column ---------- */
+.total { font: 700 40px var(--mono); letter-spacing: -.02em; line-height: 1; }
+.total small { font-size: 16px; color: var(--dim); font-weight: 400; margin-left: 2px; }
+.subs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.subs div { border-left: 2px solid var(--line-2); padding-left: 9px; }
+.subs .k { font: 9.5px "Vip"; letter-spacing: .2em; text-transform: uppercase; color: var(--faint); }
+.subs .v { font: 14px var(--mono); }
+#side { width: 100%; height: 210px; display: block; }
+#side text { font-family: var(--mono); }
+.pre { display: flex; flex-direction: column; gap: 8px; }
+.msg { display: grid; grid-template-columns: 16px 1fr; gap: 9px; font-size: 12px; line-height: 1.5; padding: 9px 10px; border-radius: 3px; background: var(--panel-2); border-left: 2px solid var(--faint); }
+.msg.err { border-left-color: var(--err); } .msg.err .ic { color: var(--err); }
+.msg.warn { border-left-color: var(--warn); } .msg.warn .ic { color: var(--warn); }
+.msg.ok { border-left-color: var(--ok); } .msg.ok .ic { color: var(--ok); }
+.msg .ic { font: 700 12px var(--mono); }
+.go {
+  position: relative; width: 100%; height: 56px; border: 0; border-radius: 4px; cursor: pointer; overflow: hidden;
+  background: var(--orange); color: #fff; font: 700 14px "Vip"; letter-spacing: .24em; text-transform: uppercase;
+  box-shadow: 0 8px 30px rgba(228,82,27,.28); transition: .15s;
+}
+.go:hover:not(:disabled) { background: var(--hot); box-shadow: 0 8px 36px rgba(255,122,26,.42); }
+.go:disabled { background: #24252c; color: var(--faint); box-shadow: none; cursor: not-allowed; }
+.go .fill { position: absolute; inset: 0; width: 0; background: rgba(255,255,255,.18); transition: width .2s; }
+.go span { position: relative; }
+.checks { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.chk { display: grid; grid-template-columns: 18px 1fr; gap: 8px; background: var(--panel); padding: 8px 10px; }
+.chk .ic { font: 700 12px var(--mono); color: var(--ok); }
+.chk.bad .ic { color: var(--err); }
+.chk .l { font-size: 12px; } .chk .d { font: 10.5px var(--mono); color: var(--faint); }
+.result-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.badge { font: 700 10px "Vip"; letter-spacing: .22em; padding: 4px 8px; border-radius: 3px; background: rgba(70,214,140,.12); color: var(--ok); border: 1px solid rgba(70,214,140,.35); }
+.badge.bad { background: rgba(255,90,78,.12); color: var(--err); border-color: rgba(255,90,78,.35); }
+.file { font: 11.5px var(--mono); color: var(--dim); overflow-wrap: anywhere; line-height: 1.4; }
+.file b { color: var(--text); font-weight: 400; display: block; }
+.ghost { margin-top: 10px; width: 100%; padding: 9px; border-radius: 4px; border: 1px solid var(--line-2); background: transparent; cursor: pointer; font: 400 10px "Vip"; letter-spacing: .22em; text-transform: uppercase; color: var(--dim); }
+.ghost:hover { border-color: var(--orange); color: var(--text); }
+
+/* ---------- source card ---------- */
+.src-empty {
+  width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px 14px; cursor: pointer; text-align: left;
+  border: 1px dashed var(--line-2); border-radius: 4px; background: var(--panel-2); transition: border-color .18s, background .18s, transform .18s;
+}
+.src-empty:hover, body.dragging .src-empty { border-color: var(--orange); background: rgba(228,82,27,.07); }
+.src-empty:active { transform: scale(.99); }
+.src-empty .ico { width: 40px; height: 40px; border-radius: 4px; display: grid; place-items: center; background: rgba(228,82,27,.1); flex: none; transition: .18s; }
+.src-empty:hover .ico { background: var(--orange); }
+.src-empty:hover .ico path.arrow { stroke: #fff; }
+.src-empty .ico svg { transition: transform .25s; }
+.src-empty:hover .ico svg { transform: translateY(-2px); }
+.src-empty .t1 { font-weight: 600; font-size: 13.5px; }
+.src-empty .t2 { font-size: 11.5px; color: var(--faint); margin-top: 1px; }
+.src-file { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 11px 11px 11px 12px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--panel-2); position: relative; overflow: hidden; animation: fade .25s ease-out both; }
+.src-file.err { border-color: rgba(255,90,78,.45); }
+.src-file .ico { width: 40px; height: 40px; border-radius: 4px; display: grid; place-items: center; background: rgba(255,255,255,.04); font: 700 9px var(--mono); color: var(--hot); letter-spacing: .05em; }
+.src-file.err .ico { color: var(--err); }
+.src-file .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.src-file .mt { font: 11px var(--mono); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.src-file.err .mt { color: var(--err); white-space: normal; }
+.src-file .acts { display: flex; gap: 4px; }
+.ib { width: 30px; height: 30px; border-radius: 4px; border: 1px solid transparent; background: transparent; cursor: pointer; display: grid; place-items: center; color: var(--dim); transition: .14s; }
+.ib:hover { border-color: var(--line-2); background: rgba(255,255,255,.05); color: var(--text); }
+.ib.x:hover { border-color: rgba(255,90,78,.5); color: var(--err); background: rgba(255,90,78,.08); }
+.loadbar { position: absolute; left: 0; bottom: 0; height: 2px; width: 35%; background: linear-gradient(90deg, transparent, var(--hot), transparent); animation: load 1.1s ease-in-out infinite; }
+@keyframes load { from { left: -35%; } to { left: 100%; } }
+.spin { width: 18px; height: 18px; border: 2px solid rgba(255,122,26,.2); border-top-color: var(--hot); border-radius: 50%; animation: rot .8s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* ---------- editable percentages / spacing ---------- */
+.hz .k { display: flex; align-items: center; justify-content: space-between; }
+.pct { display: flex; align-items: baseline; gap: 3px; margin-top: 4px; }
+.pct input { width: 44px; font: 600 19px var(--mono); background: transparent; border: 0; border-bottom: 1px solid var(--line-2); outline: none; padding: 0; text-align: right; }
+.pct input:focus { border-bottom-color: var(--orange); }
+.pct span { font: 13px var(--mono); color: var(--dim); }
+.hz .z { font: 11.5px var(--mono); color: var(--hot); margin-top: 4px; }
+.hz.off .pct input { pointer-events: none; }
+.collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .25s ease, opacity .25s; }
+.collapse > div { overflow: hidden; }
+.collapse.shut { grid-template-rows: 0fr; opacity: 0; }
+.row { display: grid; grid-template-columns: auto 1fr 78px; gap: 12px; align-items: center; margin-top: 12px; }
+.row .rl { font-size: 12px; color: var(--dim); white-space: nowrap; }
+
+/* ---------- explainer popover ---------- */
+.q { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line-2); font: 700 9px var(--mono); color: var(--faint); letter-spacing: 0; margin-left: 6px; transition: .15s; flex: none; }
+[data-tip]:hover .q { border-color: var(--orange); color: var(--hot); }
+#tip {
+  position: fixed; z-index: 50; width: 300px; pointer-events: none; opacity: 0; transform: translateX(-6px) scale(.98);
+  transition: opacity .16s ease, transform .16s ease; background: rgba(13,14,17,.97); border: 1px solid var(--line-2);
+  border-radius: 5px; box-shadow: 0 18px 50px rgba(0,0,0,.6), 0 0 0 1px rgba(228,82,27,.08); backdrop-filter: blur(6px);
+}
+#tip.show { opacity: 1; transform: none; }
+#tip.left { transform: translateX(6px) scale(.98); } #tip.left.show { transform: none; }
+#tip::before { content: ""; position: absolute; top: var(--ay, 30px); left: -6px; width: 10px; height: 10px; background: inherit; border-left: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2); transform: rotate(45deg); }
+#tip.left::before { left: auto; right: -6px; transform: rotate(225deg); }
+#tip .art { height: 162px; border-bottom: 1px solid var(--line); background: radial-gradient(ellipse at 50% 60%, #14151b, #0b0c0f); border-radius: 5px 5px 0 0; position: relative; overflow: hidden; }
+#tip .art::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px); pointer-events: none; }
+#tip svg { width: 100%; height: 100%; display: block; }
+#tip svg text { font-family: var(--mono); }
+#tip .body { padding: 11px 13px 13px; }
+#tip .tt { font: 700 10.5px "Vip"; letter-spacing: .2em; text-transform: uppercase; color: var(--hot); }
+#tip .tx { margin-top: 6px; font-size: 12px; line-height: 1.55; color: #cfcdc9; }
+#tip .tx b { color: var(--text); font-weight: 600; }
+
+footer { display: flex; align-items: center; gap: 18px; padding: 0 22px; border-top: 1px solid var(--line); font: 10.5px var(--mono); color: var(--faint); }
+footer .grow { flex: 1; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">SolidForms</div>
+  <div class="sep"></div>
+  <div class="product">Auto-Eject</div>
+  <div class="ver" id="ver">v3.0</div>
+  <div class="spacer"></div>
+  <div class="machine"><span class="dot" id="statusDot"></span><span id="statusText">No file loaded</span></div>
+  <div class="sep"></div>
+  <div class="machine" id="machineName">Elegoo CC · Bambu P1S · auto-detect</div>
+</header>
+
+<main>
+  <!-- ======================= LEFT: inputs ======================= -->
+  <section class="col left">
+    <div class="card" id="srcCard">
+      <div class="label"><span class="n">01</span>Source</div>
+      <button class="src-empty" id="srcEmpty" type="button">
+        <span class="ico"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke-width="1.6"><path class="arrow" d="M10 14V3m-4.5 4.5L10 3l4.5 4.5" stroke="#FF7A1A"/><path d="M3 13v4h14v-4" stroke="#9A9AA5"/></svg></span>
+        <span><span class="t1" style="display:block">Choose a print file</span><span class="t2" style="display:block">.gcode (CC, P1S) or .gcode.3mf (P1S) · or drop it here</span></span>
+      </button>
+      <div class="src-file hidden" id="srcFile">
+        <div class="ico" id="srcIco">GCODE</div>
+        <div style="min-width:0"><div class="nm" id="fileName"></div><div class="mt" id="fileSub"></div></div>
+        <div class="acts">
+          <button class="ib" id="srcReplace" title="Choose another file"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3.5H10"/></svg></button>
+          <button class="ib x" id="srcClear" title="Remove file"><svg width="13" height="13" viewBox="0 0 14 14" stroke="currentColor" stroke-width="1.6"><path d="M2 2l10 10M12 2 2 12"/></svg></button>
+        </div>
+        <div class="loadbar hidden" id="srcLoad"></div>
+      </div>
+      <div class="readouts hidden" id="readouts"></div>
+    </div>
+
+    <div class="card">
+      <div class="label" data-tip="units"><span class="n">02</span>Batch<span class="q">?</span></div>
+      <div class="qty" data-tip="units">
+        <button id="qMinus">−</button>
+        <input type="number" id="qty" min="1" max="200" value="10">
+        <button id="qPlus">+</button>
+        <span class="unit">UNITS</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label"><span class="n">03</span>Cooldown before eject</div>
+      <div class="seg" id="coolSeg">
+        <button data-v="temp" class="on" data-tip="cool_temp">Bed target</button>
+        <button data-v="time" data-tip="cool_time">Fixed time</button>
+      </div>
+      <div class="slider" data-tip="cool">
+        <input type="range" id="coolRange">
+        <div class="val"><input type="number" id="coolVal"><span id="coolUnit">°C</span></div>
+      </div>
+      <div class="collapse shut" id="floorWrap"><div>
+        <div class="row" data-tip="cool_floor" style="margin-top:6px">
+          <span class="rl">Minimum wait<span class="q">?</span></span>
+          <input type="range" id="floorRange" min="0" max="60" step="1">
+          <div class="val" style="display:flex;justify-content:flex-end;align-items:baseline;gap:4px"><input type="number" id="floorVal" step="1" style="width:46px;text-align:right;font:600 18px var(--mono);background:transparent;border:0;border-bottom:1px solid var(--line-2);outline:none"><span style="color:var(--dim);font:12px var(--mono)">min</span></div>
+        </div>
+      </div></div>
+      <div class="hint" id="coolHint"></div>
+    </div>
+
+    <div class="card">
+      <div class="label"><span class="n">04</span>Purge lines</div>
+      <div class="seg" id="purgeSeg">
+        <button data-v="every" class="on" data-tip="purge_every">Every unit</button>
+        <button data-v="first" data-tip="purge_first">First unit only</button>
+      </div>
+      <div class="collapse" id="pitchWrap"><div>
+        <div class="row" data-tip="purge_pitch">
+          <span class="rl">Line spacing<span class="q">?</span></span>
+          <input type="range" id="pitchRange" min="2.5" max="20" step="0.5">
+          <div class="val" style="display:flex;justify-content:flex-end;align-items:baseline;gap:4px"><input type="number" id="pitchVal" step="0.5" style="width:46px;text-align:right;font:600 18px var(--mono);background:transparent;border:0;border-bottom:1px solid var(--line-2);outline:none"><span style="color:var(--dim);font:12px var(--mono)">mm</span></div>
+        </div>
+      </div></div>
+      <div class="hint">Lanes run front-to-back along the <b>bed sides</b>, outside the parts' ejection path, so nothing ever pushes over them.</div>
+    </div>
+
+    <div class="card">
+      <div class="label"><span class="n">05</span>Ejection</div>
+      <div class="heights">
+        <div class="hz" data-tip="push_pct"><div class="k">Push height<span class="q">?</span></div>
+          <div class="pct"><input type="number" id="pushPct" min="10" max="95" step="1"><span>% of H</span></div>
+          <div class="z" id="pushZ">Z —</div></div>
+        <div class="hz" id="sweepBox" data-tip="sweep_pct"><div class="k">Sweep height<span class="q">?</span></div>
+          <div class="pct"><input type="number" id="sweepPct" min="1" max="95" step="1"><span>% of H</span></div>
+          <div class="z" id="sweepZ">Z —</div></div>
+      </div>
+      <div class="toggle on" id="sweepT" data-tip="sweep"><span class="tl">Safety sweep after the push<span class="q">?</span></span><span class="sw"></span></div>
+      <details>
+        <summary>Advanced</summary>
+        <div class="adv">
+          <span data-tip="clearance" style="display:flex;align-items:center">Gantry clearance (mm)<span class="q">?</span></span><input type="number" id="clearance" value="70" data-tip="clearance">
+          <span data-tip="passes" style="display:flex;align-items:center">Push passes<span class="q">?</span></span><input type="number" id="passes" value="2" min="1" max="5" data-tip="passes">
+        </div>
+        <div class="toggle on" id="zipT" data-tip="zip"><span class="tl">Also save a .zip for phone sharing<span class="q">?</span></span><span class="sw"></span></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ======================= CENTER: bed ======================= -->
+  <section class="col center">
+    <div class="stage">
+      <div class="bar">
+        <div class="label"><span class="n">◎</span>Bed · top view</div>
+        <div class="legend">
+          <span><i style="background:#F4F2EF"></i>Part</span>
+          <span><i style="background:#FF7A1A"></i>Purge lane</span>
+          <span><i style="background:#E4521B"></i>Push</span>
+          <span><i style="background:#9A9AA5"></i>Safety sweep</span>
+        </div>
+      </div>
+      <div class="view"><svg id="bed" viewBox="-30 -24 316 316" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <div class="empty" id="empty">
+        <div class="frame"><div class="scan"></div>
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none" stroke-width="1.5">
+            <rect x="8" y="8" width="40" height="40" stroke="#5d5e68"/><path d="M28 18v20m-7-7 7 7 7-7" stroke="#E4521B"/>
+          </svg>
+        </div>
+        <div class="big">DROP A PRINT FILE</div>
+        <div class="small">Slice one plate with the stock <b style="color:var(--dim)">Elegoo Centauri Carbon</b> or <b style="color:var(--dim)">Bambu Lab P1S</b> profile, then drop the .gcode (P1S also .gcode.3mf) anywhere on this window. The printer is detected automatically.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= RIGHT: summary ======================= -->
+  <section class="col right">
+    <div class="card">
+      <div class="label"><span class="n">06</span>Job<span class="aside" id="jobAside"></span></div>
+      <div class="total" id="total">—</div>
+      <div class="subs">
+        <div><div class="k">Units</div><div class="v" id="sUnits">—</div></div>
+        <div><div class="k">Filament</div><div class="v" id="sFil">—</div></div>
+        <div><div class="k">Per unit</div><div class="v" id="sCycle">—</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label"><span class="n">07</span>Side view<span class="aside">push → front</span></div>
+      <svg id="side" viewBox="0 0 340 210"></svg>
+    </div>
+
+    <div class="card">
+      <div class="label"><span class="n">08</span>Preflight</div>
+      <div class="pre" id="pre"><div class="msg"><span class="ic">·</span><span>Load a file to run the checks.</span></div></div>
+    </div>
+
+    <button class="go" id="go" disabled><div class="fill" id="fill"></div><span id="goText">Generate batch file</span></button>
+
+    <div class="card live hidden" id="resultCard">
+      <div class="result-head"><span class="badge" id="badge">VERIFIED</span><span class="file" id="resName"></span></div>
+      <div class="checks" id="checks"></div>
+      <button class="ghost" id="reveal">Show in folder</button>
+    </div>
+  </section>
+</main>
+
+<div id="tip"><div class="art" id="tipArt"></div><div class="body"><div class="tt" id="tipTitle"></div><div class="tx" id="tipText"></div></div></div>
+
+<footer>
+  <span>Front door open or off · catch bin in front · scrape last batch's purge lines · watch the first cycle of every new product</span>
+  <span class="grow"></span>
+  <span id="foot">SolidForms · internal production tool</span>
+</footer>
+
+<script src="web.js?v=9b5ccd2fa7"></script>
+<script>
+const $ = id => document.getElementById(id);
+const S = { quantity: 10, cool_mode: "temp", cool_temp: 38, cool_minutes: 15, cool_floor: 10, purge_every: true, sweep: true,
+            push_pct: 70, sweep_pct: 10, purge_pitch: 3.5, clearance: 70, push_passes: 2, make_zip: true };
+let PATH = null, PLAN = null, RESULT = null, busy = false, timer = null, req = 0;
+const C = { paper: "#F4F2EF", hot: "#FF7A1A", orange: "#E4521B", grey: "#9A9AA5", faint: "#5d5e68", line: "rgba(255,255,255,.07)" };
+
+const api = () => window.pywebview && window.pywebview.api;
+const isP1S = () => !!(PLAN && PLAN.machine && PLAN.machine.key === "p1s");
+const fmtMin = m => { m = Math.round(m); return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------------- controls ---------------- */
+function seg(id, key, map) {
+  $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
+    $(id).querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+    S[key] = map(b.dataset.v); syncCool(); syncPitch(); changed();
+  });
+}
+seg("coolSeg", "cool_mode", v => v);
+seg("purgeSeg", "purge_every", v => v === "every");
+
+function toggle(id, key) {
+  $(id).onclick = () => { S[key] = !S[key]; $(id).classList.toggle("on", S[key]); changed(); };
+}
+toggle("sweepT", "sweep"); toggle("zipT", "make_zip");
+
+function setQty(v) { S.quantity = Math.max(1, Math.min(200, Math.round(+v || 1))); $("qty").value = S.quantity; changed(); }
+$("qMinus").onclick = () => setQty(S.quantity - 1);
+$("qPlus").onclick = () => setQty(S.quantity + 1);
+$("qty").onchange = e => setQty(e.target.value);
+
+function syncCool() {
+  const t = S.cool_mode === "temp";
+  const r = $("coolRange"), v = $("coolVal");
+  r.min = t ? 25 : 1; r.max = t ? 50 : 60; r.step = 1;
+  r.value = v.value = t ? S.cool_temp : S.cool_minutes;
+  r.style.setProperty("--p", ((r.value - r.min) / (r.max - r.min) * 100) + "%");
+  $("coolUnit").textContent = t ? "°C" : "min";
+  const floor = t && isP1S();
+  $("floorWrap").classList.toggle("shut", !floor);
+  $("floorRange").value = $("floorVal").value = S.cool_floor;
+  $("floorRange").style.setProperty("--p", (S.cool_floor / 60 * 100) + "%");
+  $("coolHint").innerHTML = floor
+    ? `Fans max for <b>${S.cool_floor} min</b> guaranteed, then waits for the bed to read <b>${S.cool_temp} °C</b>. Bambu doesn't document M190 on a cooling bed, so the minimum is the safety net.`
+    : t
+    ? `Pushes once the bed reads <b>${S.cool_temp} °C</b>. No time cap: firmware can't do "temp or timeout". Hot room? Use <b>Fixed time</b>.`
+    : `Fans max for <b>${S.cool_minutes} min</b>, then pushes <b>whether or not</b> the bed has cooled. Never stalls.`;
+}
+function setFloor(v) { S.cool_floor = Math.max(0, Math.min(120, Math.round(+v || 0))); syncCool(); changed(); }
+$("floorRange").oninput = e => setFloor(e.target.value);
+$("floorVal").onchange = e => setFloor(e.target.value);
+function setCool(v) {
+  const t = S.cool_mode === "temp";
+  v = Math.round(+v || 0);
+  if (t) S.cool_temp = Math.max(25, Math.min(50, v)); else S.cool_minutes = Math.max(1, Math.min(240, v));
+  syncCool(); changed();
+}
+$("coolRange").oninput = e => setCool(e.target.value);
+$("coolVal").onchange = e => setCool(e.target.value);
+$("clearance").onchange = e => { S.clearance = Math.max(10, +e.target.value || 70); e.target.value = S.clearance; changed(); };
+$("passes").onchange = e => { S.push_passes = Math.max(1, Math.min(5, Math.round(+e.target.value || 2))); e.target.value = S.push_passes; changed(); };
+
+function syncPitch() {
+  $("pitchWrap").classList.toggle("shut", !S.purge_every);
+  const r = $("pitchRange");
+  r.value = $("pitchVal").value = S.purge_pitch;
+  r.style.setProperty("--p", ((S.purge_pitch - 2.5) / 17.5 * 100) + "%");
+}
+function setPitch(v) { S.purge_pitch = Math.max(2.5, Math.min(20, Math.round((+v || 3.5) * 2) / 2)); syncPitch(); changed(); }
+$("pitchRange").oninput = e => setPitch(e.target.value);
+$("pitchVal").onchange = e => setPitch(e.target.value);
+
+function syncPct() { $("pushPct").value = S.push_pct; $("sweepPct").value = S.sweep_pct; }
+$("pushPct").onchange = e => { S.push_pct = Math.max(10, Math.min(95, Math.round(+e.target.value || 70))); if (S.sweep_pct > S.push_pct) S.sweep_pct = S.push_pct; syncPct(); changed(); };
+$("sweepPct").onchange = e => { S.sweep_pct = Math.max(1, Math.min(S.push_pct, Math.round(+e.target.value || 10))); syncPct(); changed(); };
+syncCool(); syncPitch(); syncPct();
+
+/* ---------------- file loading ---------------- */
+async function browse() {
+  if (busy || !api()) return;
+  const p = await api().browse();
+  if (p && p.error) { showSrcError(null, p.error); return; }
+  if (p) load(p);
+}
+$("srcEmpty").onclick = browse; $("srcReplace").onclick = browse; $("empty").onclick = browse;
+$("srcClear").onclick = clearFile;
+window.onDropPath = p => { document.body.classList.remove("dragging"); load(p); };
+document.addEventListener("dragover", e => { e.preventDefault(); document.body.classList.add("dragging"); });
+document.addEventListener("dragleave", e => { if (!e.relatedTarget) document.body.classList.remove("dragging"); });
+document.addEventListener("drop", e => { e.preventDefault(); document.body.classList.remove("dragging"); });
+
+const baseName = p => p.split(/[\\/]/).pop();
+function srcState(state, name, meta) {
+  $("srcEmpty").classList.toggle("hidden", state === "empty" ? false : true);
+  $("srcFile").classList.toggle("hidden", state === "empty");
+  $("srcFile").classList.toggle("err", state === "error");
+  $("srcLoad").classList.toggle("hidden", state !== "loading");
+  $("srcIco").innerHTML = state === "loading" ? `<span class="spin"></span>` : state === "error" ? "!"
+    : /\.3mf$/i.test(PATH || "") ? "3MF" : "GCODE";
+  if (name != null) { $("fileName").textContent = name; $("fileName").title = PATH || ""; }
+  if (meta != null) $("fileSub").textContent = meta;
+  if (state !== "ready") $("readouts").classList.add("hidden");
+}
+function load(p) {
+  if (busy) return;
+  if (!/\.(gcode|3mf)$/i.test(p)) { showSrcError(baseName(p), "Not a print file. Export G-code (or, for the P1S, a plate sliced .gcode.3mf) from the slicer."); return; }
+  PATH = p; PLAN = null; RESULT = null; $("resultCard").classList.add("hidden");
+  srcState("loading", baseName(p), "Reading and analysing…");
+  status("", "Analysing…"); analyze();
+}
+function clearFile() {
+  if (busy) return;
+  PATH = null; PLAN = null; RESULT = null; req++;
+  srcState("empty");
+  $("resultCard").classList.add("hidden");
+  $("bed").innerHTML = ""; $("side").innerHTML = ""; $("empty").classList.remove("hidden");
+  $("pre").innerHTML = `<div class="msg"><span class="ic">·</span><span>Load a file to run the checks.</span></div>`;
+  ["total", "sUnits", "sFil", "sCycle"].forEach(id => $(id).textContent = "—");
+  $("pushZ").textContent = $("sweepZ").textContent = "Z —"; $("jobAside").textContent = "";
+  $("machineName").textContent = "Elegoo CC · Bambu P1S · auto-detect"; $("zipT").classList.remove("hidden"); syncCool();
+  $("go").disabled = true; status("", "No file loaded");
+}
+function changed() { RESULT = null; $("resultCard").classList.add("hidden"); clearTimeout(timer); timer = setTimeout(analyze, 160); }
+function status(cls, txt) { $("statusDot").className = "dot " + cls; $("statusText").textContent = txt; }
+
+async function analyze() {
+  if (!PATH || !api()) return;
+  const mine = ++req;
+  const r = await api().analyze(PATH, S);
+  if (mine !== req) return;                       // a newer request (or a clear) superseded this one
+  if (!r.ok) { PLAN = null; renderError(r.error); return; }
+  PLAN = r.plan; render();
+}
+
+/* ---------------- rendering ---------------- */
+function showSrcError(name, msg) {
+  if (name != null) PATH = null;
+  srcState("error", name ?? (PATH ? baseName(PATH) : "File"), msg);
+  status("bad", "File rejected");
+}
+function renderError(msg) {
+  srcState("error", PATH ? baseName(PATH) : "File", "Rejected: see Preflight");
+  $("bed").innerHTML = ""; $("side").innerHTML = ""; $("empty").classList.remove("hidden");
+  $("pre").innerHTML = `<div class="msg err"><span class="ic">✕</span><span>${esc(msg)}</span></div>`;
+  ["total", "sUnits", "sFil", "sCycle"].forEach(id => $(id).textContent = "—");
+  $("pushZ").textContent = $("sweepZ").textContent = "Z —";
+  $("machineName").textContent = "Elegoo CC · Bambu P1S · auto-detect"; syncCool();
+  $("go").disabled = true; status("bad", "File rejected");
+}
+
+function render() {
+  const P = PLAN, M = P.machine;
+  $("empty").classList.add("hidden");
+  srcState("ready", P.file, `${M.key.toUpperCase()} · ${P.size_mb} MB · ${P.folder.split(/[\\/]/).pop()}`);
+  $("machineName").textContent = `${M.name} · ${M.bed} × ${M.bed} × ${M.z_max}`;
+  $("zipT").classList.toggle("hidden", P.package === "3mf");
+  syncCool();
+  $("fileSub").title = P.path;
+  const ro = [["Height", `${P.height}<small> mm</small>`], ["Footprint", `${P.footprint[0]}×${P.footprint[1]}<small> mm</small>`],
+              ["Print time", fmtMin(P.unit_min)], ["Filament", `${P.unit_g.toFixed(1)}<small> g</small>`],
+              ["Layers", P.layers.toLocaleString()], ["Material", esc(P.material)]];
+  $("readouts").innerHTML = ro.map(([k, v]) => `<div class="ro"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  $("readouts").classList.remove("hidden");
+
+  $("pushZ").textContent = `Z ${P.push_z.toFixed(1)} mm` + (P.push_raised ? " · raised" : "");
+  $("pushZ").title = P.push_rule;
+  $("sweepZ").textContent = P.sweep_z == null ? "off" : `Z ${P.sweep_z.toFixed(1)} mm`;
+  $("sweepBox").classList.toggle("off", P.sweep_z == null);
+
+  $("total").innerHTML = fmtMin(P.total_min).replace(/(\d+)h (\d+)m/, "$1<small>h</small> $2<small>m</small>");
+  $("sUnits").textContent = S.quantity;
+  $("sFil").textContent = (P.total_g / 1000).toFixed(2) + " kg";
+  $("sCycle").textContent = fmtMin(P.cycle_min);
+  const spools = Math.max(0, Math.ceil(P.total_g / 1000) - 1);
+  $("jobAside").textContent = spools ? `${spools} spool change${spools > 1 ? "s" : ""} (1 kg)` : "fits one 1 kg spool";
+
+  const msgs = [...P.errors.map(m => ["err", "✕", m]), ...P.warnings.map(m => ["warn", "!", m])];
+  if (!P.errors.length) msgs.unshift(["ok", "✓", `Ready: ${S.quantity} units on the ${M.name}, ${P.purge.filter(Boolean).length} purge lane${P.purge.filter(Boolean).length === 1 ? "" : "s"} on the bed sides, ${P.push_lanes.length} push lanes. Output: ${P.package === "3mf" ? ".gcode.3mf" : ".gcode"}.`]);
+  $("pre").innerHTML = msgs.map(([c, i, m]) => `<div class="msg ${c} fade"><span class="ic">${i}</span><span>${esc(m)}</span></div>`).join("");
+
+  $("go").disabled = !!P.errors.length || busy;
+  status(P.errors.length ? "bad" : "live", P.errors.length ? `${P.errors.length} issue${P.errors.length > 1 ? "s" : ""} to fix` : "Ready to generate");
+  drawBed(P); drawSide(P);
+}
+
+function drawBed(P) {
+  const Y = y => 256 - y, o = [];
+  o.push(`<defs>
+    <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="4" stroke="${C.paper}" stroke-opacity=".22" stroke-width="1"/></pattern>
+    <pattern id="xh" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><line x1="0" y1="0" x2="0" y2="3" stroke="#fff" stroke-opacity=".12" stroke-width=".8"/></pattern>
+    <marker id="arr" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="${C.orange}"/></marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M0 0 10 5 0 10z" fill="${C.grey}"/></marker>
+    <filter id="glow"><feGaussianBlur stdDeviation="1.4"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>`);
+  // bed + grid
+  o.push(`<rect x="0" y="0" width="256" height="256" fill="#0c0d11" stroke="${C.faint}" stroke-width=".6"/>`);
+  for (let v = 16; v < 256; v += 16) {
+    const major = v % 64 === 0, a = major ? .09 : .035;
+    o.push(`<line x1="${v}" y1="0" x2="${v}" y2="256" stroke="#fff" stroke-opacity="${a}" stroke-width=".4"/><line x1="0" y1="${v}" x2="256" y2="${v}" stroke="#fff" stroke-opacity="${a}" stroke-width=".4"/>`);
+  }
+  for (let v = 0; v <= 256; v += 64) {
+    o.push(`<text x="${v}" y="266" font-size="5.5" fill="${C.faint}" text-anchor="middle">${v}</text><text x="-6" y="${Y(v) + 2}" font-size="5.5" fill="${C.faint}" text-anchor="end">${v}</text>`);
+  }
+  // corner brackets
+  [[0, 0, 1, 1], [256, 0, -1, 1], [0, 256, 1, -1], [256, 256, -1, -1]].forEach(([x, y, dx, dy]) =>
+    o.push(`<path d="M${x - 4 * dx} ${y + 10 * dy}V${y - 4 * dy}H${x + 10 * dx}" fill="none" stroke="${C.orange}" stroke-width="1"/>`));
+  // ejection band (keep-out for purge)
+  o.push(`<rect x="${Math.max(0, P.left_limit)}" y="0" width="${Math.min(256, P.right_limit) - Math.max(0, P.left_limit)}" height="256" fill="${C.orange}" fill-opacity=".035"/>`);
+  o.push(`<text x="${(Math.max(0, P.left_limit) + Math.min(256, P.right_limit)) / 2}" y="${Y(251.6)}" font-size="4" fill="${C.orange}" fill-opacity=".6" text-anchor="middle" letter-spacing="1.2">EJECTION PATH · NO PURGE</text>`);
+  // exclude zones
+  P.exclude.forEach(r => o.push(`<rect x="${r[0]}" y="${Y(r[3])}" width="${r[1] - r[0]}" height="${r[3] - r[2]}" fill="url(#xh)" stroke="${C.faint}" stroke-width=".4"/>`));
+  // sweep lanes
+  if (P.sweep_z != null) P.sweep_lanes.forEach(x =>
+    o.push(`<line x1="${x}" y1="${Y(P.stage_y)}" x2="${x}" y2="${Y(P.final_y)}" stroke="${C.grey}" stroke-opacity=".55" stroke-width=".7" stroke-dasharray="1.5 3" marker-end="url(#arrG)"><title>Safety sweep X${x} at Z${P.sweep_z}</title></line>`));
+  // parts
+  P.parts.forEach(r => {
+    const w = r[1] - r[0], h = r[3] - r[2];
+    o.push(`<g class="fade"><rect x="${r[0]}" y="${Y(r[3])}" width="${w}" height="${h}" fill="url(#hatch)" stroke="${C.paper}" stroke-width=".9"/>
+      <rect x="${r[0]}" y="${Y(r[3])}" width="${w}" height="${h}" fill="${C.paper}" fill-opacity=".05"/>
+      <text x="${r[0] + w / 2}" y="${Y(r[3]) + h / 2 - 1}" font-size="6.5" fill="${C.paper}" text-anchor="middle" font-weight="700">PART</text>
+      <text x="${r[0] + w / 2}" y="${Y(r[3]) + h / 2 + 7}" font-size="5" fill="${C.grey}" text-anchor="middle">${w.toFixed(1)} × ${h.toFixed(1)} · ${P.height} H</text></g>`);
+  });
+  // push lanes
+  P.push_lanes.forEach(x =>
+    o.push(`<line class="flow" x1="${x}" y1="${Y(P.stage_y)}" x2="${x}" y2="${Y(P.final_y) - 2}" stroke="${C.orange}" stroke-width="1.1" marker-end="url(#arr)"><title>Push X${x} at Z${P.push_z}</title></line>`));
+  // purge lanes
+  const [py0, py1] = P.purge_y;
+  const perSide = { L: 0, R: 0 };
+  P.purge.forEach((l, i) => {
+    if (!l) return;
+    const [x, side] = l, k = perSide[side]++, up = k % 2 === 0;
+    o.push(`<g class="fade" style="animation-delay:${i * 25}ms"><rect x="${x}" y="${Y(py1)}" width="${Math.max(P.lane_step, 1.3)}" height="${py1 - py0}" fill="${C.hot}" filter="url(#glow)"><title>Unit ${i + 1} purge · ${side === "L" ? "left" : "right"} side · X${x}</title></rect>
+      <text x="${x + .65}" y="${up ? Y(py1) - 2.5 : Y(py0) + 5.5}" font-size="3.6" fill="${C.hot}" text-anchor="middle">${i + 1}</text></g>`);
+  });
+  const sides = ["L", "R"].filter(s => perSide[s]);
+  sides.forEach(s => {
+    const xs = P.purge.filter(l => l && l[1] === s).map(l => l[0]);
+    const cx = (Math.min(...xs) + Math.max(...xs) + P.lane_step) / 2;
+    o.push(`<text x="${cx}" y="${Y(py0) + 13}" font-size="4.2" fill="${C.hot}" fill-opacity=".7" text-anchor="middle" letter-spacing=".8">PURGE ${s === "L" ? "L" : "R"}</text>`);
+  });
+  // park + labels
+  P.machine.marks.forEach(([x, y, t]) => {
+    if (y > 256)        // behind the bed: toolhead parking spot
+      o.push(`<g><rect x="${x - 6}" y="-12" width="12" height="7" fill="none" stroke="${C.grey}" stroke-width=".6"/><text x="${x + 9}" y="-6.6" font-size="5" fill="${C.grey}">${t}</text></g>`);
+    else                // in front of the bed edge: a hardware hazard (P1S filament cutter)
+      o.push(`<g><path d="M${x - 3} 262.5h6l-3-4.5z" fill="none" stroke="${C.grey}" stroke-width=".6"/><text x="${x + 5}" y="263" font-size="4.2" fill="${C.grey}" letter-spacing=".6">${t}</text><title>Filament cutter lever: pushes stay right of X30</title></g>`);
+  });
+  o.push(`<text x="128" y="-12" font-size="5.5" fill="${C.faint}" text-anchor="middle" letter-spacing="2">BACK</text>`);
+  o.push(`<path d="M40 279l6 4 6-4M204 279l6 4 6-4" fill="none" stroke="${C.orange}" stroke-width=".8"/><text x="128" y="285" font-size="5.5" fill="${C.dim || C.grey}" text-anchor="middle" letter-spacing="2">FRONT · DOOR · PARTS EXIT</text>`);
+  $("bed").innerHTML = o.join("");
+}
+
+function drawSide(P) {
+  const W = 340, base = 186, top = 18;
+  const H = P.height, depth = P.footprint[1], limit = P.push_z + P.clearance;
+  const k = (base - top) / Math.max(H, limit) ;
+  const pw = Math.min(150, Math.max(26, depth * k)), px = 120;
+  const y = z => base - z * k, o = [];
+  o.push(`<line x1="10" y1="${base}" x2="${W - 10}" y2="${base}" stroke="${C.grey}" stroke-width="1.2"/>`);
+  o.push(`<text x="12" y="${base + 14}" font-size="9" fill="${C.faint}" letter-spacing="1.5">FRONT</text><text x="${W - 12}" y="${base + 14}" font-size="9" fill="${C.faint}" text-anchor="end" letter-spacing="1.5">BACK</text>`);
+  // clearance limit
+  o.push(`<line x1="20" y1="${y(limit)}" x2="${W - 20}" y2="${y(limit)}" stroke="${C.grey}" stroke-opacity=".5" stroke-dasharray="3 3"/><text x="22" y="${y(limit) - 4}" font-size="8.5" fill="${C.faint}">GANTRY CLEARANCE · Z${limit.toFixed(0)}</text>`);
+  const rod = P.machine.rod_height;
+  if (rod && P.push_z + rod < limit - 6)
+    o.push(`<line x1="20" y1="${y(P.push_z + rod)}" x2="${px - 8}" y2="${y(P.push_z + rod)}" stroke="${C.grey}" stroke-opacity=".35" stroke-dasharray="1 3"/><text x="22" y="${y(P.push_z + rod) - 4}" font-size="8" fill="${C.faint}">X RODS · +${rod}</text>`);
+  // part
+  o.push(`<rect x="${px}" y="${y(H)}" width="${pw}" height="${H * k}" fill="url(#sh)" stroke="${C.paper}" stroke-width="1"/>`);
+  o.push(`<defs><pattern id="sh" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="${C.paper}" stroke-opacity=".16"/></pattern></defs>`);
+  o.push(`<text x="${px + pw / 2}" y="${y(H) - 5}" font-size="9" fill="${C.paper}" text-anchor="middle">${H} mm</text>`);
+  // push
+  const yp = y(P.push_z), nx = px + pw + 16;
+  o.push(`<line x1="${px - 6}" y1="${yp}" x2="${W - 14}" y2="${yp}" stroke="${C.orange}" stroke-width="1.2"/>`);
+  o.push(`<path d="M${nx + 2} ${yp - 13}h18v8l-6 5h-6l-6-5z" fill="${C.orange}"/><path d="M${nx - 2} ${yp}l-8 -4v8z" fill="${C.orange}"/>`);
+  o.push(`<text x="${W - 14}" y="${yp - 5}" font-size="9.5" fill="${C.hot}" text-anchor="end">PUSH ${P.push_raised ? "" : P.push_pct + "% · "}Z${P.push_z.toFixed(1)}</text>`);
+  // sweep
+  if (P.sweep_z != null) {
+    const ys = y(P.sweep_z);
+    o.push(`<line x1="20" y1="${ys}" x2="${W - 14}" y2="${ys}" stroke="${C.grey}" stroke-width="1" stroke-dasharray="2 3"/><text x="${W - 14}" y="${ys - 4}" font-size="9" fill="${C.grey}" text-anchor="end">SWEEP ${P.sweep_pct}% · Z${P.sweep_z.toFixed(1)}</text>`);
+  }
+  $("side").innerHTML = o.join("");
+}
+
+/* ---------------- generate ---------------- */
+window.onProgress = (d, n) => { $("fill").style.width = (d / n * 100) + "%"; $("goText").textContent = `Writing unit ${d} / ${n}`; };
+$("go").onclick = async () => {
+  if (!PLAN || PLAN.errors.length || busy) return;
+  busy = true; $("go").disabled = true; $("fill").style.width = "0"; $("goText").textContent = "Choose where to save…";
+  status("", "Generating…");
+  const r = await api().generate(PATH, S);
+  busy = false; $("fill").style.width = "0"; $("goText").textContent = "Generate batch file";
+  if (r.cancelled) { render(); return; }
+  if (!r.ok) { render(); $("pre").insertAdjacentHTML("afterbegin", `<div class="msg err"><span class="ic">✕</span><span>${esc(r.error)}</span></div>`); return; }
+  RESULT = r;
+  $("badge").textContent = r.passed ? "VERIFIED" : "CHECK FAILED";
+  $("badge").classList.toggle("bad", !r.passed);
+  $("resName").innerHTML = `<b>${esc(r.name)}</b>${r.size_mb} MB${r.zip_mb ? ` · zip ${r.zip_mb} MB` : ""}`;
+  $("checks").innerHTML = r.checks.map((c, i) => `<div class="chk ${c.ok ? "" : "bad"} fade" style="animation-delay:${i * 60}ms"><span class="ic">${c.ok ? "✓" : "✕"}</span><div><div class="l">${esc(c.label)}</div><div class="d">${esc(c.detail)}</div></div></div>`).join("");
+  $("resultCard").classList.remove("hidden");
+  $("go").disabled = false;
+  status(r.passed ? "live" : "bad", r.passed ? `Saved & verified in ${r.seconds}s` : "Verification failed: do not print");
+  $("resultCard").scrollIntoView({ behavior: "smooth", block: "end" });
+};
+$("reveal").onclick = () => RESULT && api().reveal(RESULT.out);
+
+/* ---------------- hover explainers ---------------- */
+// Every illustration is a 240×130 SVG. Bed surface at y=112. Animations are SMIL, looping.
+const K = { bed: "#9A9AA5", paper: "#F4F2EF", hot: "#FF7A1A", orange: "#E4521B", dim: "#5d5e68" };
+const svg = inner => `<svg viewBox="0 0 240 130">${inner}</svg>`;
+const bedLine = (x1 = 14, x2 = 226) => `<line x1="${x1}" y1="112" x2="${x2}" y2="112" stroke="${K.bed}" stroke-width="2"/>`;
+const label = (x, y, t, c = K.bed, a = "middle", s = 8) => `<text x="${x}" y="${y}" font-size="${s}" fill="${c}" text-anchor="${a}">${t}</text>`;
+const nozzle = `<path d="M-10 -21h20v10l-7 9h-6l-7-9z" fill="${K.orange}"/>`;            // tip at (0,-2)
+const anim = (attr, values, dur, keyTimes, extra = "") =>
+  `<animate attributeName="${attr}" values="${values}" dur="${dur}s" ${keyTimes ? `keyTimes="${keyTimes}"` : ""} repeatCount="indefinite" ${extra}/>`;
+const move = (values, dur, keyTimes) =>
+  `<animateTransform attributeName="transform" type="translate" values="${values}" dur="${dur}s" ${keyTimes ? `keyTimes="${keyTimes}"` : ""} repeatCount="indefinite"/>`;
+const hatch = `<defs><pattern id="th" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="${K.paper}" stroke-opacity=".28"/></pattern></defs>`;
+const part = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#th)" stroke="${K.paper}" stroke-width="1.2"/>`;
+
+// side view: a part H px tall gets pushed off at height `zf` (0-1) of its height
+function pushScene(zf, H = 78, w = 34, px = 96, dur = 2.8) {
+  const top = 112 - H, yz = 112 - H * zf;
+  return svg(`${hatch}${bedLine()}
+    <line x1="${px - 16}" y1="${top}" x2="${px - 16}" y2="112" stroke="${K.dim}"/><line x1="${px - 20}" y1="${top}" x2="${px - 12}" y2="${top}" stroke="${K.dim}"/>
+    ${label(px - 22, top + H / 2 + 3, "H", K.bed, "end")}
+    <line x1="${px - 30}" y1="${yz}" x2="232" y2="${yz}" stroke="${K.orange}" stroke-dasharray="3 3" stroke-opacity=".7"/>
+    ${label(232, yz - 5, `${Math.round(zf * 100)}% of H`, K.hot, "end")}
+    <g>${move(`0 0;0 0;-${px + 10} 0;-${px + 10} 0`, dur, "0;0.42;0.8;1")}${anim("opacity", "1;1;1;0;0", dur, "0;0.42;0.75;0.85;1")}${part(px, top, w, H)}</g>
+    <g>${move(`210 ${yz + 2};${px + w + 10} ${yz + 2};${-4} ${yz + 2};${-4} ${yz + 2}`, dur, "0;0.42;0.8;1")}<g>${nozzle}</g></g>
+    ${label(16, 125, "← FRONT", K.dim, "start", 7.5)}`);
+}
+
+const TIPS = {
+  units: () => ({
+    title: "Units",
+    text: `How many times the plate prints <b>back-to-back in one file</b>. After each unit the part is pushed off the front and the next one starts on its own.`,
+    art: svg(`${hatch}${bedLine()}
+      <g>${move("0 0;0 0;-130 0;-130 0", 3, "0;0.5;0.85;1")}${anim("opacity", "1;1;0;0", 3, "0;0.75;0.86;1")}
+        <rect x="100" y="112" width="40" height="0" fill="url(#th)" stroke="${K.paper}" stroke-width="1.2">
+          ${anim("height", "0;46;46;46", 3, "0;0.42;0.9;1")}${anim("y", "112;66;66;66", 3, "0;0.42;0.9;1")}</rect></g>
+      <g>${move("200 40;200 40;142 40;-20 40", 3, "0;0.55;0.62;1")}<g>${nozzle}</g></g>
+      ${label(120, 26, `× ${S.quantity}`, K.hot, "middle", 15)}`),
+  }),
+  cool_temp: () => ({
+    title: "Cooldown · bed target",
+    text: isP1S()
+      ? `First <b>${S.cool_floor} min</b> of fans at max (guaranteed), then waits until the bed reads <b>${S.cool_temp} °C</b> and pushes. Cool PLA lets go of PEI on its own. If the room is hot and the bed never gets there, the job waits.`
+      : `Waits until the bed sensor reads <b>${S.cool_temp} °C</b>, then pushes. Cool PLA lets go of PEI on its own. <b>No time limit</b>: if the room is hot and the bed never gets there, the job waits.`,
+    art: svg(`${hatch}${bedLine(90)}
+      <rect x="32" y="18" width="14" height="76" rx="7" fill="none" stroke="${K.bed}" stroke-width="1.5"/><circle cx="39" cy="100" r="10" fill="${K.orange}">${anim("fill", `${K.orange};${K.orange};#8fb4d9;#8fb4d9`, 3.6, "0;0.1;0.65;1")}</circle>
+      <rect x="35" y="30" width="8" height="66" fill="${K.orange}">${anim("y", "30;30;66;66", 3.6, "0;0.1;0.65;1")}${anim("height", "66;66;30;30", 3.6, "0;0.1;0.65;1")}${anim("fill", `${K.orange};${K.orange};#8fb4d9;#8fb4d9`, 3.6, "0;0.1;0.65;1")}</rect>
+      <text x="58" y="40" font-size="13" fill="${K.hot}">55°${anim("opacity", "1;1;0;0", 3.6, "0;0.35;0.45;1")}</text>
+      <text x="58" y="40" font-size="13" fill="#8fb4d9" opacity="0">${S.cool_temp}°${anim("opacity", "0;0;1;1", 3.6, "0;0.55;0.65;1")}</text>
+      <g>${move("0 0;0 0;-90 0;-90 0", 3.6, "0;0.72;0.92;1")}${anim("opacity", "1;1;0;0", 3.6, "0;0.88;0.95;1")}${part(140, 70, 30, 42)}</g>
+      <g>${move("226 92;226 92;178 92;90 92", 3.6, "0;0.66;0.72;1")}<g>${nozzle}</g></g>`),
+  }),
+  cool_time: () => ({
+    title: "Cooldown · fixed time",
+    text: `Runs the fans at max for exactly <b>${S.cool_minutes} min</b>, then pushes <b>whether or not</b> the bed has cooled. The job can never stall, but a part that's still warm may hold on.`,
+    art: svg(`${hatch}${bedLine(90)}
+      <circle cx="44" cy="60" r="28" fill="none" stroke="${K.bed}" stroke-width="1.6"/>
+      <line x1="44" y1="60" x2="44" y2="38" stroke="${K.hot}" stroke-width="2.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" values="0 44 60;360 44 60" dur="1.8s" repeatCount="indefinite"/></line>
+      <circle cx="44" cy="60" r="2.5" fill="${K.hot}"/>${label(44, 104, `${S.cool_minutes} MIN`, K.hot, "middle", 9)}
+      <g>${move("0 0;0 0;-90 0;-90 0", 3.6, "0;0.6;0.85;1")}${anim("opacity", "1;1;0;0", 3.6, "0;0.8;0.9;1")}${part(140, 70, 30, 42)}</g>
+      <g>${move("226 92;226 92;178 92;90 92", 3.6, "0;0.52;0.6;1")}<g>${nozzle}</g></g>`),
+  }),
+  cool: () => TIPS[S.cool_mode === "temp" ? "cool_temp" : "cool_time"](),
+  cool_floor: () => {
+    const f = S.cool_floor, a = 0.55;            // clock runs for the first 55% of the loop, then the thermometer
+    return { title: "Minimum wait · P1S",
+      text: `Bambu doesn't document whether its M190 waits for a bed that is <b>cooling</b>. So the P1S always runs the fans at max for <b>${f} min</b> first, then checks the bed target. If M190 doesn't wait, you still get ${f} min of cooling: <b>never a push on a hot bed</b>.`,
+      art: svg(`${hatch}${bedLine(150)}
+        <circle cx="52" cy="58" r="26" fill="none" stroke="${K.bed}" stroke-width="1.6"/>
+        <line x1="52" y1="58" x2="52" y2="38" stroke="${K.hot}" stroke-width="2.4" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" values="0 52 58;360 52 58;360 52 58" keyTimes="0;${a};1" dur="4s" repeatCount="indefinite"/></line>
+        <circle cx="52" cy="58" r="2.5" fill="${K.hot}"/>${label(52, 100, `${f} MIN`, K.hot, "middle", 9)}
+        <path d="M86 58h22m-6-6 6 6-6 6" stroke="${K.bed}" stroke-width="1.6" fill="none"/>${label(97, 48, "THEN", K.dim, "middle", 6.5)}
+        <g opacity=".3">${anim("opacity", ".3;.3;1;1", 4, `0;${a};${a + 0.05};1`)}
+          <rect x="126" y="22" width="12" height="64" rx="6" fill="none" stroke="${K.bed}" stroke-width="1.5"/><circle cx="132" cy="92" r="9" fill="#8fb4d9"/>
+          <rect x="129" y="58" width="6" height="32" fill="#8fb4d9"/>${label(164, 50, `${S.cool_temp}°`, "#8fb4d9", "middle", 13)}</g>
+        <g>${move("0 0;0 0;-60 0;-60 0", 4, "0;0.8;0.95;1")}${anim("opacity", "1;1;0;0", 4, "0;0.9;0.96;1")}${part(178, 80, 26, 32)}</g>
+        <g>${move("236 98;236 98;206 98;150 98", 4, "0;0.74;0.8;1")}<g>${nozzle}</g></g>`) };
+  },
+  purge_every: () => {
+    const n = Math.min(S.quantity, 6), lanes = [];
+    for (let i = 0; i < n; i++) {
+      const left = i % 2 === 0, k = Math.floor(i / 2), x = left ? 70 + k * 9 : 168 - k * 9, a = (0.06 + i * 0.12).toFixed(3);
+      lanes.push(`<g opacity="0">${anim("opacity", "0;0;1;1;0", 4, `0;${a};${(+a + 0.03).toFixed(3)};0.93;1`)}
+        <rect x="${x}" y="26" width="2" height="74" fill="${K.hot}"/>${label(x + 1, 22, i + 1, K.hot, "middle", 6.5)}</g>`);
+    }
+    return { title: "Purge · every unit",
+      text: `Each unit draws its <b>own purge line on a fresh spot</b> along the left and right bed edges, alternating sides. They stay out of the parts' path, so no push or falling part ever drags one.`,
+      art: svg(`${hatch}<rect x="64" y="10" width="112" height="112" fill="#0c0d11" stroke="${K.bed}"/>
+        <rect x="96" y="10" width="48" height="112" fill="${K.orange}" fill-opacity=".07"/>${label(120, 118, "PATH", K.orange, "middle", 6)}
+        ${part(102, 48, 36, 30)}${lanes.join("")}`) };
+  },
+  purge_first: () => ({
+    title: "Purge · first unit only",
+    text: `Only unit 1 draws a purge line. Units 2+ go straight from the nozzle clean to the part. <b>Tip:</b> turn on a 1-loop skirt in OrcaSlicer so the nozzle still primes.`,
+    art: svg(`${hatch}<rect x="64" y="10" width="112" height="112" fill="#0c0d11" stroke="${K.bed}"/>
+      <rect x="70" y="26" width="2" height="74" fill="${K.hot}"/>${label(71, 22, "1", K.hot, "middle", 6.5)}
+      ${part(102, 48, 36, 30)}
+      <g opacity="0">${anim("opacity", "0;0;1;1", 3, "0;0.3;0.45;1")}${label(120, 94, "2, 3, 4… start", K.bed, "middle", 7)}${label(120, 103, "here directly", K.bed, "middle", 7)}</g>`),
+  }),
+  purge_pitch: () => {
+    const g = Math.max(16, Math.min(60, S.purge_pitch * 5)), x0 = 120 - g;
+    return { title: "Purge line spacing",
+      text: `Distance between neighbouring purge lines (now <b>${S.purge_pitch} mm</b>). Tighter fits more units beside the part; wider keeps the lines clearly apart and easier to scrape off. 2.5-20 mm.`,
+      art: svg(`${[0, 1, 2].map(i => `<rect x="${x0 + i * g - 1.5}" y="20" width="3" height="80" fill="${K.hot}"/>`).join("")}
+        <g>${anim("opacity", "0.5;1;0.5", 1.6)}
+          <line x1="${x0}" y1="108" x2="${x0 + g}" y2="108" stroke="${K.paper}" stroke-width="1"/>
+          <path d="M${x0} 104v8M${x0 + g} 104v8" stroke="${K.paper}"/>
+          ${label(x0 + g / 2, 123, `${S.purge_pitch} mm`, K.paper, "middle", 9)}</g>`) };
+  },
+  push_pct: () => ({
+    title: "Push height",
+    text: `The height the nozzle hits the part at, as a <b>% of the part height</b> (now <b>${S.push_pct}%</b>). Higher gives more leverage to tip tall parts over; lower pushes nearer the base, which suits short, flat parts.`,
+    art: pushScene(S.push_pct / 100),
+  }),
+  sweep_pct: () => ({
+    title: "Safety sweep height",
+    text: `After the push, a second <b>low pass across the whole bed</b> at ${S.sweep_pct}% of the part height. It clears a part that tipped over but stayed on the bed, before the next print starts.`,
+    art: svg(`${hatch}${bedLine()}
+      <rect x="150" y="34" width="26" height="78" fill="none" stroke="${K.dim}" stroke-dasharray="3 3"/>${label(163, 28, "standing H", K.dim, "middle", 7)}
+      <g>${move("0 0;0 0;-140 0;-140 0", 3, "0;0.4;0.82;1")}${anim("opacity", "1;1;0;0", 3, "0;0.75;0.85;1")}${part(86, 86, 64, 26)}</g>
+      <line x1="20" y1="${112 - 78 * S.sweep_pct / 100}" x2="232" y2="${112 - 78 * S.sweep_pct / 100}" stroke="${K.bed}" stroke-dasharray="2 3"/>
+      ${label(232, 112 - 78 * S.sweep_pct / 100 - 5, `${S.sweep_pct}% of H`, K.bed, "end")}
+      <g>${move(`214 ${112 - 78 * S.sweep_pct / 100 + 2};160 ${112 - 78 * S.sweep_pct / 100 + 2};18 ${112 - 78 * S.sweep_pct / 100 + 2};18 ${112 - 78 * S.sweep_pct / 100 + 2}`, 3, "0;0.4;0.82;1")}<g>${nozzle}</g></g>`),
+  }),
+  sweep: () => ({ ...TIPS.sweep_pct(), title: "Safety sweep",
+    text: `Turns the low second pass on or off. On = safer: a part lying on the bed after the push gets cleared. <b>Off</b> only if your parts always leave cleanly.` }),
+  clearance: () => ({
+    title: "Gantry clearance",
+    text: `To push, the bed <b>rises</b> until the nozzle is at push height. On a tall part, the top then sticks up <b>above the nozzle tip</b>, beside the toolhead and gantry. This is the most it may stick up (now <b>${S.clearance} mm</b>). If your push % would exceed it, the push is raised automatically. Only matters for very tall parts.`,
+    art: svg(`${hatch}
+      <rect x="8" y="6" width="224" height="9" fill="#202128" stroke="${K.bed}" stroke-width=".8"/>${label(14, 13, "GANTRY", K.bed, "start", 6.5)}
+      <rect x="150" y="15" width="36" height="38" fill="#191a20" stroke="${K.bed}" stroke-width=".8"/>
+      <g transform="translate(168 62)">${nozzle}</g>
+      <line x1="8" y1="60" x2="232" y2="60" stroke="${K.bed}" stroke-dasharray="2 3"/>${label(230, 70, "nozzle tip", K.bed, "end", 7)}
+      <line x1="8" y1="24" x2="140" y2="24" stroke="${K.orange}" stroke-dasharray="4 3"/>${label(10, 21, "LIMIT", K.hot, "start", 7)}
+      <g>${move("0 46;0 46;0 0;0 0", 3.4, "0;0.15;0.7;1")}
+        ${bedLine(20, 140)}${part(64, 24, 34, 88)}
+        <rect x="64" y="24" width="34" height="36" fill="${K.orange}" opacity="0">${anim("opacity", "0;0;0.45;0.45", 3.4, "0;0.6;0.75;1")}</rect></g>
+      <g opacity="0">${anim("opacity", "0;0;1;1", 3.4, "0;0.7;0.8;1")}
+        <line x1="112" y1="24" x2="112" y2="60" stroke="${K.paper}"/><path d="M108 24h8M108 60h8" stroke="${K.paper}"/>
+        ${label(118, 45, `≤ ${S.clearance} mm`, K.paper, "start", 8.5)}</g>`),
+  }),
+  passes: () => ({
+    title: "Push passes",
+    text: `How many times the push lanes run (now <b>${S.push_passes}</b>). A second pass catches a part that <b>rocked back</b> instead of falling.`,
+    art: svg(`${hatch}${bedLine()}
+      <g>${move("0 0;-30 0;-16 0;-16 0;-130 0;-130 0", 4, "0;0.2;0.3;0.5;0.78;1")}${anim("opacity", "1;1;1;1;1;0;0", 4, "0;0.2;0.3;0.5;0.75;0.85;1")}${part(96, 50, 34, 62)}</g>
+      <g>${move("214 70;100 70;214 70;214 70;-10 70;-10 70", 4, "0;0.2;0.3;0.5;0.78;1")}${anim("opacity", "1;1;0;1;1;1", 4, "0;0.2;0.25;0.45;0.5;1")}<g>${nozzle}</g></g>
+      <text x="120" y="24" font-size="11" fill="${K.hot}" text-anchor="middle">PASS 1${anim("opacity", "1;1;0;0", 4, "0;0.4;0.45;1")}</text>
+      <text x="120" y="24" font-size="11" fill="${K.hot}" text-anchor="middle" opacity="0">PASS 2${anim("opacity", "0;0;1;1", 4, "0;0.45;0.5;1")}</text>`),
+  }),
+  zip: () => ({
+    title: "Zip copy",
+    text: `Also saves a <b>.zip</b> of the finished .gcode. G-code compresses about 9×, so a 55 MB batch becomes ~6 MB: small enough for WhatsApp or email. (A P1S .gcode.3mf is already compressed, so it needs no zip.)`,
+    art: svg(`<path d="M44 22h40l16 16v66H44z" fill="#15161b" stroke="${K.bed}"/><path d="M84 22v16h16" fill="none" stroke="${K.bed}"/>
+      ${label(72, 74, "55 MB", K.paper, "middle", 10)}${label(72, 88, ".gcode", K.bed, "middle", 7.5)}
+      <path d="M112 64h24m-7-7 7 7-7 7" stroke="${K.hot}" stroke-width="2" fill="none">${anim("opacity", "0.3;1;0.3", 1.4)}</path>
+      <g><path d="M154 44h28l10 10v40h-38z" fill="#15161b" stroke="${K.hot}"/>
+        <path d="M168 44v6h4v4h-4v4h4v4h-4" stroke="${K.hot}" fill="none"/>
+        ${label(173, 80, "6 MB", K.paper, "middle", 9)}${label(173, 106, ".zip", K.hot, "middle", 7.5)}
+        <animateTransform attributeName="transform" type="scale" values="1;1.04;1" additive="sum" dur="1.4s" repeatCount="indefinite"/></g>`),
+  }),
+};
+
+let tipTimer = null, tipFor = null;
+function showTip(key, el) {
+  const t = TIPS[key] && TIPS[key]();
+  if (!t) return;
+  $("tipArt").innerHTML = t.art; $("tipTitle").textContent = t.title; $("tipText").innerHTML = t.text;
+  const tip = $("tip"), r = el.getBoundingClientRect(), tw = 300, th = tip.offsetHeight || 260;
+  const right = r.right + 14 + tw < innerWidth;
+  const x = right ? r.right + 14 : r.left - 14 - tw;
+  const y = Math.max(10, Math.min(innerHeight - th - 10, r.top + r.height / 2 - 34));
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+  tip.style.setProperty("--ay", Math.max(14, Math.min(th - 24, r.top + r.height / 2 - y - 5)) + "px");
+  tip.classList.toggle("left", !right);
+  requestAnimationFrame(() => tip.classList.add("show"));
+}
+function hideTip() { clearTimeout(tipTimer); tipFor = null; $("tip").classList.remove("show"); }
+document.querySelectorAll("[data-tip]").forEach(el => {
+  el.addEventListener("mouseenter", () => {
+    if (tipFor === el) return;
+    clearTimeout(tipTimer); tipFor = el;
+    const shown = $("tip").classList.contains("show");
+    tipTimer = setTimeout(() => showTip(el.dataset.tip, el), shown ? 60 : 380);
+  });
+  el.addEventListener("mouseleave", e => {
+    if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+    clearTimeout(tipTimer); tipFor = null;
+    tipTimer = setTimeout(() => { if (!tipFor) $("tip").classList.remove("show"); }, 120);
+  });
+});
+document.addEventListener("mousedown", e => { if (!e.target.closest("input")) hideTip(); });
+window.__showTip = key => { const el = document.querySelector(`[data-tip="${key}"]`); if (el) showTip(key, el); };
+
+window.addEventListener("pywebviewready", async () => {
+  const i = await api().info();
+  $("ver").textContent = "v" + i.version;
+  $("foot").textContent = `${i.app} v${i.version} · SolidForms internal production tool`;
+});
+</script>
+</body>
+</html>
