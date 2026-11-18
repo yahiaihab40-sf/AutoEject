@@ -37,6 +37,7 @@ REHEAT_MIN = 5.0
 COOL_FLOOR_MAX = 120
 LOAD_E_PER_MM, LOAD_F = 15 / 222, 6000   # stock P1S load line, used if the file's own can't be read
 PLATE_RE = re.compile(r"^Metadata/plate_\d+\.gcode$")
+SUPPORTED = "Elegoo Centauri Carbon (.gcode), the Bambu Lab P1S and the Bambu Lab A1 (.gcode or .gcode.3mf)"
 SLICE_INFO = "Metadata/slice_info.config"
 
 
@@ -94,19 +95,20 @@ class Job:
             return default
 
         self.printer_model = meta(r"^; printer_model = (.+)$", "")
+        M = self.machine
         if "centauri" in self.printer_model.lower():
             raise JobError("Centauri Carbon jobs go in as plain G-code: export G-code from OrcaSlicer, not a .3mf.")
-        if P1S.match not in self.printer_model.lower():
+        if not self.model_ok(self.printer_model):
             raise JobError(f"Sliced for '{self.printer_model or 'an unknown printer'}'. This app supports the "
-                           "Elegoo Centauri Carbon (.gcode) and the Bambu Lab P1S (.gcode or .gcode.3mf).")
+                           f"{SUPPORTED}.")
         if L[self.ex_start + 1].startswith("; " + APP_NAME):
             raise JobError("This is already an Auto-Eject batch file. Load the single-plate file from the slicer.")
-        starts = [i for i in range(self.ex_start, self.ex_end) if L[i].startswith(";===== machine:")]
+        starts = self.start_lines(L)
         if len(starts) > 1:
             raise JobError("This file already holds more than one print. Load the single-plate file "
                            "straight from the slicer.")
         if not starts:
-            raise JobError(f"The stock Bambu start G-code was not found. Slice with {P1S.profile}.")
+            raise JobError(f"The stock Bambu start G-code was not found. Slice with {M.profile}.")
 
         self.layer0 = first(lambda l: l.startswith("; CHANGE_LAYER"), self.ex_start, self.ex_end)
         if self.layer0 is None:
@@ -115,10 +117,24 @@ class Job:
         self.end_i = first(lambda l: l.startswith("; MACHINE_END_GCODE_START") or l.startswith("; filament end gcode"),
                            lc_idx[-1], self.ex_end)
         if self.end_i is None:
-            raise JobError("Could not find the end G-code (expected the stock Bambu P1S end G-code).")
+            raise JobError(f"Could not find the end G-code (expected the stock {M.name} end G-code).")
         self.end_tag = L[self.end_i]
         self.end_tag_in_body = sum(1 for l in L[self.layer0:self.end_i] if l == self.end_tag)
+        self.find_purge(L, first)
+        self.read_rest(L, meta, lc_idx)
 
+    # ---- printer-specific parts of the parsing (the Bambu A1 engine overrides these) ----
+    def model_ok(self, model):
+        return P1S.match in model.lower()
+
+    def on_bed(self, r):
+        """Does this extrusion count toward the parts' footprint? (The A1 flushes into a chute off the bed.)"""
+        return True
+
+    def start_lines(self, L):
+        return [i for i in range(self.ex_start, self.ex_end) if L[i].startswith(";===== machine:")]
+
+    def find_purge(self, L, first):
         # the stock front "nozzle load line" -> replaced by a side lane
         self.purge_a = first(lambda l: l.startswith(";===== nozzle load line"), self.ex_start, self.layer0)
         self.purge_b = (first(lambda l: l.startswith("M400"), self.purge_a, self.layer0)
@@ -140,6 +156,7 @@ class Job:
                     x = float(vals["X"])
         self.can_purge = self.load_temp is not None
 
+    def read_rest(self, L, meta, lc_idx):
         self.height = meta(r"^; max_z_height: ([\d.]+)", None, float)
         self.layers = meta(r"^; total layer number: (\d+)", None, int) or len(lc_idx)
         t = meta(r"total estimated time: ([^;\n]+)")
@@ -185,6 +202,8 @@ class Job:
             if not ext:
                 continue
             count += 1
+            if not self.on_bed(r):
+                continue
             full = r if full is None else union([full, r])
             if lc <= 1:
                 fl = r if fl is None else union([fl, r])
@@ -209,16 +228,17 @@ class Job:
         return s.cool_floor + TEMP_EXTRA_MIN if s.cool_mode == "temp" else s.cool_minutes + REHEAT_MIN
 
     def check(self, s, p):
-        E, W = p.errors, p.warnings
+        E, W, M = p.errors, p.warnings, self.machine
+        short = M.name.replace("Bambu Lab ", "")
         if s.cool_mode == "temp":
             if not 0 <= s.cool_floor <= COOL_FLOOR_MAX:
                 E.append(f"Minimum cooling time must be 0-{COOL_FLOOR_MAX} minutes.")
             elif s.cool_floor < 5:
-                W.append("Under 5 min of guaranteed cooling: if the P1S's M190 does not wait for a cooling bed, "
+                W.append(f"Under 5 min of guaranteed cooling: if the {short}'s M190 does not wait for a cooling bed, "
                          "the push meets a part that is still warm and stuck.")
-        if self.height and p.push_z and self.height - p.push_z > P1S.rod_height:
+        if self.height and p.push_z and self.height - p.push_z > M.rod_height:
             W.append(f"During the push the part top stands {self.height - p.push_z:.0f} mm above the nozzle, higher "
-                     f"than the X-axis rods ({P1S.rod_height:g} mm). The toolhead front still does the pushing; "
+                     f"than the X-axis rods ({M.rod_height:g} mm). The toolhead front still does the pushing; "
                      "watch the first ejection.")
 
 
@@ -349,7 +369,7 @@ def write_output(job, s, p, out_path, progress=None):
                 l = f"{k} : {scale_numbers(v, Q)}"
             w(l + "\n")
         w(L[job.ex_start] + "\n")
-        w(f"; {APP_NAME} v{VERSION} ({P1S.name}): {Q} units, "
+        w(f"; {APP_NAME} v{VERSION} ({job.machine.name}): {Q} units, "
           f"{'cool %g min + to %dC' % (s.cool_floor, s.cool_temp) if s.cool_mode == 'temp' else 'cool %g min' % s.cool_minutes}, "
           f"push Z{p.push_z:g} lanes {p.push_lanes}, sweep Z{p.sweep_z}, "
           f"purge {'every unit' if s.purge_every else 'first unit only'} (bed sides)\n")
@@ -359,7 +379,8 @@ def write_output(job, s, p, out_path, progress=None):
             for i in range(job.ex_start + 1, job.end_i):
                 if job.purge_a <= i <= job.purge_b:
                     if i == job.purge_a:
-                        g = lane_gcode(job, u + 1, *lane) if lane else no_purge_gcode(job, u + 1, p.no_purge_xy)
+                        g = (job.engine.lane_gcode(job, u + 1, *lane) if lane
+                             else job.engine.no_purge_gcode(job, u + 1, p.no_purge_xy))
                         w("\n".join(g) + "\n")
                     continue
                 l = L[i]
@@ -375,7 +396,7 @@ def write_output(job, s, p, out_path, progress=None):
                     l = count_re.sub(lambda m: f"; layer num/total_layer_count: {int(m.group(1)) + u * job.layers}"
                                                f"/{total_layers}", l)
                 w(l + "\n")
-            w("\n".join(eject_gcode(job, s, p, u + 1, u == Q - 1)) + "\n")
+            w("\n".join(job.engine.eject_gcode(job, s, p, u + 1, u == Q - 1)) + "\n")
             if progress:
                 progress(u + 1, Q)
         for l in L[job.end_i:job.ex_end + 1]:
@@ -389,7 +410,7 @@ def write_output(job, s, p, out_path, progress=None):
 
 def validate(job, s, p, out_path):
     """Re-read the written G-code and check it. Returns a list of (ok, label, detail)."""
-    Q, m = s.quantity, P1S
+    Q, m = s.quantity, job.machine
     parts = job.part_rects
     unit, mode, rel = 0, None, False
     x = y = z = 0.0
@@ -454,8 +475,8 @@ def validate(job, s, p, out_path):
                     print_ext[unit] = print_ext.get(unit, 0) + 1
                 elif mode == "eject":
                     eject_ext += 1
-            if mode in ("purge", "eject") and not (0 <= nx <= m.bed and 0 <= ny <= m.park_y
-                                                   and (0.2 <= nz <= m.z_max)):
+            if mode in ("purge", "eject") and not (m.x_min <= nx <= m.bed and m.y_min <= ny <= m.park_y
+                                                   and (m.purge_z_min <= nz <= m.z_max)):
                 oob.append(n)
             x, y, z = nx, ny, nz
 
@@ -477,7 +498,7 @@ def validate(job, s, p, out_path):
           "end G-code after unit %d" % Q if end_tags == want_tags and end_after_last else f"{end_tags} end blocks")
     check(eject_ext == 0, "No extrusion during ejection", f"{eject_ext} extrusion moves found" if eject_ext else "clean")
     check(not oob, "Purge and ejection moves inside the machine",
-          f"lines {oob[:5]}" if oob else f"X 0-{m.bed:g} · Y 0-{m.park_y:g} · Z 0.2-{m.z_max:g}")
+          f"lines {oob[:5]}" if oob else f"X {m.x_min:g}-{m.bed:g} · Y {m.y_min:g}-{m.park_y:g} · Z {m.purge_z_min:g}-{m.z_max:g}")
     segs = [(u, r) for u, rs in purge.items() for r in rs]
     hit_part = sorted({u for u, r in segs if any(rect_hit(grow(r, 0.3), q) for q in parts)})
     in_band = sorted({u for u, r in segs if not (r[1] <= p.left_limit or r[0] >= p.right_limit)})

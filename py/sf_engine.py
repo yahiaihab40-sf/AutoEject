@@ -19,7 +19,7 @@ import zipfile
 from dataclasses import dataclass, field, asdict
 
 APP_NAME = "SolidForms Auto-Eject"
-VERSION = "3.0"
+VERSION = "3.1"
 
 BED_MAX = 256.0
 EDGE = 3.0                   # purge lanes stay this far inside the bed edge
@@ -66,6 +66,9 @@ class Machine:
     back_warn_y: float = BACK_WARN_Y
     rod_height: float | None = None   # X-axis rods above the nozzle tip, if the UI should show them
     marks: tuple = ((PARK_X, PARK_Y, "PARK"),)
+    x_min: float = 0.0                # the checker's limits for purge and ejection moves (some printers park off the bed)
+    y_min: float = 0.0
+    purge_z_min: float = 0.2
 
 
 CC = Machine("cc", "Elegoo Centauri Carbon", "centauri", "the stock Elegoo Centauri Carbon printer profile")
@@ -400,6 +403,15 @@ def make_plan(job, s):
     # purge lanes along the bed sides, outside the parts' X band
     p.left_limit = fp[0] - m.purge_gap
     p.right_limit = fp[1] + m.purge_gap
+    if hasattr(job, "plan_purge"):          # a printer with its own purge layout (Bambu A1); returns the sweep span
+        a, b = job.plan_purge(s, p, fp)
+        if p.sweep_z is not None:
+            p.sweep_lanes = spread(a, b, 36)
+        job.check(s, p)
+        p.cycle_min = job.unit_min + job.overhead_min(s)
+        p.total_min = p.cycle_min * s.quantity
+        p.total_g = job.filament_g * s.quantity
+        return p
     excl = [grow(r, 2) for r in job.bed_exclude]
     pitch = min(max(s.purge_pitch, PURGE_PITCH_MIN), PURGE_PITCH_MAX)
     left, right = [], []

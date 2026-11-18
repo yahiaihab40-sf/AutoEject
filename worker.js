@@ -2,7 +2,7 @@
 // Messages in: { id, cmd: "info" | "put" | "analyze" | "generate", ... }. Out: { id, result } / { id, error } / { type: "progress" }.
 const PYODIDE = "https://cdn.jsdelivr.net/pyodide/v0.28.3/full/";
 importScripts(PYODIDE + "pyodide.js");
-const FILES = ["sf_engine.py", "sf_p1s.py", "engines.py", "web_api.py"];
+const FILES = ["sf_engine.py", "sf_p1s.py", "sf_a1.py", "engines.py", "web_api.py"];
 const BUILD = new URL(location.href).searchParams.get("v") || "";
 
 const ready = (async () => {
